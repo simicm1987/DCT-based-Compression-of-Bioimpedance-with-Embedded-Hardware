@@ -1,0 +1,187 @@
+clear all
+clc
+% randomly generated datasets (described in the second paragraph of II.D)
+for(it=1:1:100)
+    fprintf('\nIteration %d/100\t\n', it);
+
+%Rinf
+Rinfmin=10;
+Rinfmax=1000;
+Rinf=Rinfmin+rand(1,1)*(Rinfmax-Rinfmin);
+%R1
+R1min=10;
+R1max=1000;
+R1=R1min+rand(1,1)*(R1max-R1min);
+%C
+Cmin=1e-9;
+Cmax=1e-6;
+C=Cmin+rand(1,1)*(Cmax-Cmin);
+%alpha
+alphamin=0;
+alphamax=1;
+alpha=alphamin+rand(1,1)*(alphamax-alphamin);
+fprintf('\n');
+fprintf('SET  Rinf= %.3f\t R1= %.3f\t C= %.3e\t alpha=%.3f\t\n', Rinf, R1, C, alpha);
+
+fmin = 3e3;
+fmax = 1e6;
+N = 256;
+f = logspace(log10(fmin), log10(fmax), N);
+
+w = 2.0 * pi * f;
+
+Zn = Rinf + R1 ./ (1 + R1 * C * (1i * w).^alpha);
+%rng(0, 'twister');
+a = -0.5;
+b = 0.5;
+noise = (b-a) .* rand(N, 1) + a;
+Z = Zn .* (1 + 0.01 * noise');
+
+R_orig = real(Z);
+X_orig = imag(Z);
+
+x1_input = R_orig;
+x2_input = X_orig;
+
+max_coefficients = N; 
+target_FIT = 99.00;
+best_coefficients = 0;
+
+for num_coefficients_to_keep = 1:max_coefficients
+    x1_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_dct(k+1) = sum_val;
+    end
+    
+    x2_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_dct(k+1) = sum_val;
+    end
+
+    [~, sorted_indices1] = sort(abs(x1_dct), 'descend');
+    x1_dct(sorted_indices1(num_coefficients_to_keep+1:end)) = 0;
+    
+    [~, sorted_indices2] = sort(abs(x2_dct), 'descend');
+    x2_dct(sorted_indices2(num_coefficients_to_keep+1:end)) = 0;
+
+    x1_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_idct(n+1) = sum_val; 
+    end
+    
+    x2_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_idct(n+1) = sum_val; 
+    end
+    
+    sum1=sum((x1_idct-x1_input).^2+(x2_idct-x2_input).^2);
+    sum2=sum((x1_idct-mean(x1_input)).^2+(x2_idct-mean(x2_input)).^2);
+    FIT=100*(1-sqrt(sum1/sum2));
+    NRE = 100*sum((x1_idct-x1_input).^2)/sum(x1_input);
+    fprintf('FIT(percentages)=%.3f\t\n', FIT);
+    fprintf('NRE(percentages)=%.9f\t\n', NRE);
+
+    if FIT >= target_FIT
+        best_coefficients = num_coefficients_to_keep;
+        break;
+    end
+end
+required_coefficients(it)=best_coefficients;
+fprintf('\nDCT coeff to keep: %d\n', best_coefficients);
+fprintf('CR(percentages)=%.3f\t\n', 100*(1-best_coefficients/N));
+fprintf('CR(percentages)=%.3f\t\n', 100*(1-best_coefficients/N));
+
+
+    x1_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_dct(k+1) = sum_val;
+    end
+    
+    x2_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_dct(k+1) = sum_val;
+    end
+
+    [~, sorted_indices1] = sort(abs(x1_dct), 'descend');
+    x1_dct(sorted_indices1(num_coefficients_to_keep+1:end)) = 0;
+    
+    [~, sorted_indices2] = sort(abs(x2_dct), 'descend');
+    x2_dct(sorted_indices2(num_coefficients_to_keep+1:end)) = 0;
+
+    x1_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_idct(n+1) = sum_val; 
+    end
+    
+    x2_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_idct(n+1) = sum_val; 
+    end
+end
+
+fprintf('\nDCT coeff to keep (mean +/- SD): %.2f\t %.2f\n', mean(required_coefficients), std(required_coefficients));
+
