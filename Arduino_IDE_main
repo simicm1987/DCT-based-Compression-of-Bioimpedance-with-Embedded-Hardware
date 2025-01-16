@@ -1,0 +1,170 @@
+#include <math.h>
+#define N 256
+// Parameters
+const float Rinf = 84.4;
+const float R1 = 39.2;
+const float C = 2.31e-6;
+const float alpha = 0.747;
+const float f1 = 3000.0; // Hz
+const float f2 = 1000000.0; // Hz
+const float target_FIT = 99.0;
+
+float R_orig[N];
+float X_orig[N];
+float f[N];
+float Z_re[N];
+float Z_im[N];
+
+unsigned long duration_alg=0;
+
+// Function to compute frequencies (logarithmic spacing)
+void computeFrequencies() {
+  float log_fmin = log10(f1);
+  float log_fmax = log10(f2);
+  for (int i = 0; i < N; i++) {
+    f[i] = pow(10, log_fmin + (log_fmax - log_fmin) * i / (N - 1));
+  }
+}
+
+// Function to compute impedance
+void computeImpedance() {
+  float w, Zn_real, Zn_imag;
+  for (int i = 0; i < N; i++) {
+    w = 2.0 * PI * f[i];
+    float temp = R1 * C * pow(w, alpha);
+    Zn_real = Rinf + R1 / (1 + temp * temp);
+    Zn_imag = -R1 * temp / (1 + temp * temp);
+    Z_re[i] = Zn_real;
+    Z_im[i] = Zn_imag;
+    R_orig[i] = Zn_real; // Store for DCT
+    X_orig[i] = Zn_imag; // Store for DCT
+    Serial.print(R_orig[i]);
+    Serial.print("\t ");
+    Serial.println(X_orig[i]);
+  }
+}
+
+// DCT computation
+void computeDCT(float* input, float* output) {
+  for (int k = 0; k < N; k++) {
+    float sum = 0.0;
+    for (int n = 0; n < N; n++) {
+      float coeff = (k == 0) ? 1.0 / sqrt(N) : sqrt(2.0 / N);
+      sum += coeff * input[n] * cos((PI * (n + 0.5) * k) / N);
+    }
+    output[k] = sum;
+  }
+}
+
+// IDCT computation
+void computeIDCT(float* input, float* output) {
+  for (int n = 0; n < N; n++) {
+    float sum = 0.0;
+    for (int k = 0; k < N; k++) {
+      float coeff = (k == 0) ? 1.0 / sqrt(N) : sqrt(2.0 / N);
+      sum += coeff * input[k] * cos((PI * (n + 0.5) * k) / N);
+    }
+    output[n] = sum;
+  }
+}
+
+// Main function
+void setup() {
+  Serial.begin(9600);
+  delay(1000);
+  Serial.println("Starting DCT Compression...");
+
+  computeFrequencies();
+  Serial.println("Reference Bioimpedance:");
+  computeImpedance();
+
+  float x1_dct[N], x2_dct[N];
+  duration_alg = millis();
+  computeDCT(R_orig, x1_dct);
+  computeDCT(X_orig, x2_dct);
+
+  int best_coefficients = 0;
+  float FIT = 0.0;
+
+  // Arrays to store retained coefficients
+  float x1_temp[N] = {0}, x2_temp[N] = {0};
+
+  for (int num_coefficients_to_keep = 1; num_coefficients_to_keep <= N; num_coefficients_to_keep++) {
+    // Copy coefficients for current compression level
+    for (int i = 0; i < N; i++) {
+      x1_temp[i] = (i < num_coefficients_to_keep) ? x1_dct[i] : 0;
+      x2_temp[i] = (i < num_coefficients_to_keep) ? x2_dct[i] : 0;
+    }
+
+    // Reconstruct signals
+    float x1_idct[N], x2_idct[N];
+    computeIDCT(x1_temp, x1_idct);
+    computeIDCT(x2_temp, x2_idct);
+
+    // Compute FIT
+    float sum1 = 0.0, sum2 = 0.0;
+    for (int i = 0; i < N; i++) {
+      sum1 += pow(x1_idct[i] - R_orig[i], 2) + pow(x2_idct[i] - X_orig[i], 2);
+      sum2 += pow(x1_idct[i] - mean(R_orig, N), 2) + pow(x2_idct[i] - mean(X_orig, N), 2);
+    }
+    FIT = 100.0 * (1.0 - sqrt(sum1 / sum2));
+
+    Serial.print("FIT(%): ");
+    Serial.println(FIT);
+
+    if (FIT >= target_FIT) {
+      best_coefficients = num_coefficients_to_keep;
+      duration_alg = millis() - duration_alg;
+      Serial.print("Execution time: ");
+      Serial.print(duration_alg*1e-3);
+      Serial.println(" seconds");
+
+      // Output the retained coefficients
+      Serial.println("Retained Coefficients for X1:");
+      for (int i = 0; i < best_coefficients; i++) {
+        Serial.print(x1_temp[i]);
+        Serial.print(", ");
+      }
+      Serial.println();
+
+      Serial.println("Retained Coefficients for X2:");
+      for (int i = 0; i < best_coefficients; i++) {
+        Serial.print(x2_temp[i]);
+        Serial.print(", ");
+      }
+      Serial.println();
+
+      break;
+    }
+    
+  }
+
+  // Perform IDCT with the best coefficients
+  float final_x1_idct[N], final_x2_idct[N];
+  computeIDCT(x1_temp, final_x1_idct);
+  computeIDCT(x2_temp, final_x2_idct);
+
+  // Print final reconstructed signals
+  Serial.println("Reconstructed Signals:");
+  for (int i = 0; i < N; i++) {
+    Serial.print("R: ");
+    Serial.print(final_x1_idct[i]);
+    Serial.print("\tX: ");
+    Serial.println(final_x2_idct[i]);
+  }
+
+  Serial.print("Optimal Number of Coefficients: ");
+  Serial.println(best_coefficients);
+}
+
+float mean(float* array, int size) {
+  float sum = 0.0;
+  for (int i = 0; i < size; i++) {
+    sum += array[i];
+  }
+  return sum / size;
+}
+
+void loop() {
+  // The main computation runs only once
+}
