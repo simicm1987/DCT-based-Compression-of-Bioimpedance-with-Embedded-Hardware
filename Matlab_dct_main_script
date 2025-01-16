@@ -1,0 +1,183 @@
+clear all
+clc
+%the synthetic bioimpedance with reference values of Cole-model parameters 
+Rinf = 84.4;
+R1 = 39.2;
+C = 2.31e-06;
+alpha = 0.747;
+
+fprintf('SET  Rinf= %.3f\t R0= %.3f\t C= %.3e\t alpha=%.3f\t\n', Rinf, R1, C, alpha);
+
+fmin = 3e3;
+fmax = 1e6;
+N = 256;
+f = logspace(log10(fmin), log10(fmax), N);
+
+w = 2.0 * pi * f;
+
+Zn = Rinf + R1 ./ (1 + R1 * C * (1i * w).^alpha);
+rng(0, 'twister');
+a = -0.5;
+b = 0.5;
+noise = (b-a) .* rand(N, 1) + a;
+Z = Zn .* (1 + 0.01 * noise');
+
+R_orig = real(Z);
+X_orig = imag(Z);
+
+x1_input = R_orig;
+x2_input = X_orig;
+
+max_coefficients = N; 
+target_FIT = 99.00;
+best_coefficients = 0;
+tic
+for num_coefficients_to_keep = 1:max_coefficients
+
+    x1_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_dct(k+1) = sum_val;
+    end
+    
+    x2_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_dct(k+1) = sum_val;
+    end
+    
+    [~, sorted_indices1] = sort(abs(x1_dct), 'descend');
+    x1_dct(sorted_indices1(num_coefficients_to_keep+1:end)) = 0;
+    
+    [~, sorted_indices2] = sort(abs(x2_dct), 'descend');
+    x2_dct(sorted_indices2(num_coefficients_to_keep+1:end)) = 0;
+
+    x1_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_idct(n+1) = sum_val; 
+    end
+    
+    x2_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_idct(n+1) = sum_val; 
+    end
+    
+    %FIT calculation
+    sum1=sum((x1_idct-x1_input).^2+(x2_idct-x2_input).^2);
+    sum2=sum((x1_idct-mean(x1_input)).^2+(x2_idct-mean(x2_input)).^2);
+    FIT=100*(1-sqrt(sum1/sum2));
+    NRE_R = 100*sum((x1_idct-x1_input).^2)/sum(abs(x1_input));
+    NRE_X = 100*sum((x2_idct-x2_input).^2)/sum(abs(x2_input));
+    fprintf('FIT(percentages)=%.3f\t\n', FIT);
+    fprintf('NRE_R(percentages)=%.9f\t NRE_X(percentages)=%.9f\t \n', NRE_R, NRE_X);
+
+    if FIT >= target_FIT
+        best_coefficients = num_coefficients_to_keep;
+        break;
+    end
+end
+
+fprintf('\nDCT coeff to keep: %d\n', best_coefficients);
+fprintf('CR(percentages)=%.3f\t\n', 100*(1-best_coefficients/N));
+
+
+    x1_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_dct(k+1) = sum_val;
+    end
+    
+    x2_dct = zeros(1, N); 
+    for k = 0:N-1  
+        sum_val = 0; 
+        for n = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_input(n+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_dct(k+1) = sum_val;
+    end
+
+    [~, sorted_indices1] = sort(abs(x1_dct), 'descend');
+    x1_dct(sorted_indices1(num_coefficients_to_keep+1:end)) = 0;
+    
+    [~, sorted_indices2] = sort(abs(x2_dct), 'descend');
+    x2_dct(sorted_indices2(num_coefficients_to_keep+1:end)) = 0;
+
+    x1_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x1_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x1_idct(n+1) = sum_val; 
+    end
+    
+    x2_idct = zeros(1, N);  
+    for n = 0:N-1 
+        sum_val = 0;  
+        for k = 0:N-1  
+            if k == 0
+                sum_val = sum_val + (1/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            else
+                sum_val = sum_val + (sqrt(2)/sqrt(N)) * x2_dct(k+1) * cos((n*pi/N)*k + (k*pi/(2*N)));
+            end
+        end
+        x2_idct(n+1) = sum_val; 
+    end
+toc
+
+figure;
+plot(x1_input, -x2_input, 'b--o');
+hold on;
+plot(x1_idct, -x2_idct, 'r--x');
+xlabel('R');
+ylabel('X');
+legend('Original', 'Reconstructed');
+grid on;
+X_orig = -X_orig;
+x2_idct=-x2_idct;
+
